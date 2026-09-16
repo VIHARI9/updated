@@ -1,0 +1,14 @@
+﻿node-v*-win-x64/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+backend/.venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+~$*
+*.tmp
+*.log
+.git/

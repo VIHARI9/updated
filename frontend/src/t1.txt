@@ -1,0 +1,1589 @@
+
+
+
+App.tsx:
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  BarChart3,
+  CalendarDays,
+  ChevronRight,
+  Info,
+  LayoutDashboard,
+  Leaf,
+  Maximize2,
+  Minus,
+  Moon,
+  Percent,
+  RefreshCw,
+  Sun,
+  Target,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  LabelList,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+import { api } from "./api";
+
+
+type KPI = {
+  title: string;
+  actual: number;
+  plan: number | null;
+  variance: number | null;
+  achievement_pct: number | null;
+  unit: string;
+};
+
+type Row = {
+  label: string;
+  cells?: number;
+  on_date: number;
+  mtd: number;
+  ytd: number;
+};
+
+type Overview = {
+  as_of: string;
+  kpis: KPI[];
+  distribution: Row[];
+  rejection: Row[];
+  yield_table: Row[];
+  rejection_percentage_table: Row[];
+};
+
+type Trends = {
+  production: any[];
+  rejection: any[];
+  yield: any[];
+  wafer_loss: any[];
+  breakage: Record<string, number>;
+  breakage_daily?: any[];
+  monthly_average: any[];
+};
+
+
+const fmt = (
+  value: number | null | undefined,
+  decimals = 2,
+) =>
+  value == null
+    ? "N/A"
+    : Number(value).toLocaleString(undefined, {
+        maximumFractionDigits: decimals,
+      });
+
+
+const percentTick = (value: number) =>
+  `${Number(value).toFixed(1)}%`;
+
+
+const shortDate = (value: string) =>
+  new Date(`${value}T00:00:00`).toLocaleDateString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+    },
+  );
+
+
+const monthLabel = (value: string) =>
+  new Date(`${value}T00:00:00`).toLocaleDateString(
+    "en-GB",
+    {
+      month: "short",
+      year: "2-digit",
+    },
+  );
+
+
+const cellTick = (value: number) => {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+
+  if (value >= 1_000) {
+    return `${Math.round(value / 1_000)}k`;
+  }
+
+  return `${value}`;
+};
+
+
+const axis = {
+  tick: {
+    fill: "#43544a",
+    fontSize: 11,
+    fontWeight: 600,
+  },
+  tickLine: false,
+  axisLine: {
+    stroke: "#aebbb3",
+  },
+};
+
+
+function KpiSparkline({ color, id }: { color: string; id: string }) {
+  return (
+    <svg className="kpiSparkline" viewBox="0 0 260 42" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.24" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path className="sparkArea" fill={`url(#${id})`} d="M0 33 C12 18 24 32 36 24 S60 15 72 25 S96 35 108 22 S132 31 144 19 S168 32 180 11 S204 28 216 20 S240 31 260 22 L260 42 L0 42 Z" />
+      <path className="sparkLine" stroke={color} d="M0 33 C12 18 24 32 36 24 S60 15 72 25 S96 35 108 22 S132 31 144 19 S168 32 180 11 S204 28 216 20 S240 31 260 22" />
+    </svg>
+  );
+}
+
+function KpiCard({ k, index }: { k: KPI; index: number }) {
+  const targetLabel = k.title === "Run rate" ? "Required" : "Plan";
+  const achievement = k.plan && k.plan > 0 ? (k.actual / k.plan) * 100 : (k.achievement_pct ?? 0);
+  const cappedWidth = Math.min(Math.max(achievement, 0), 120) / 1.2;
+  const gap = k.plan == null ? null : k.plan - k.actual;
+  const status = achievement < 50 ? "critical" : achievement < 75 ? "high-gap" : achievement < 90 ? "moderate" : achievement < 100 ? "near" : achievement <= 105 ? "achieved" : "exceeding";
+  const statusColor = `var(--status-${status})`;
+  const iconMap = [CalendarDays, BarChart3, TrendingUp, Zap, Target];
+  const FeatureIcon = iconMap[index] ?? BarChart3;
+
+  return (
+    <article className={`kpi status-${status}`}>
+      <div className="kpiHeader">
+        <div className={`kpiIcon kpiIcon${index + 1}`}><FeatureIcon /></div>
+        <div className="kpiTitle"><span className="statusDot" style={{ background: statusColor }} />{k.title}</div>
+        <ChevronRight className="kpiChevron" />
+      </div>
+
+      <div className="compare">
+        <div>
+          <small>{targetLabel}</small>
+          <strong>{fmt(k.plan)}</strong>
+          <em>{k.unit}</em>
+        </div>
+        <i />
+        <div>
+          <small>Actual</small>
+          <strong>{fmt(k.actual)}</strong>
+          <em>{k.unit}</em>
+        </div>
+      </div>
+
+      <div className="performanceTrack" aria-label={`${fmt(achievement, 1)} percent achieved`}>
+        <span style={{ width: `${cappedWidth}%`, background: statusColor }} />
+      </div>
+
+      <footer>
+        <b style={{ color: statusColor }}>
+          {gap == null ? "Comparison unavailable" : `${gap > 0 ? "-" : "+"}${fmt(Math.abs(gap))} ${k.unit}`}
+        </b>
+        <span>{k.plan == null ? "" : `${fmt(achievement, 1)}% achieved`}</span>
+      </footer>
+      <KpiSparkline color={statusColor} id={`spark-${index}`} />
+    </article>
+  );
+}
+function Chart({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="panel chartPanel">
+      <div className="chartHeading">
+        <div>
+          <h2>{title}</h2>
+
+          {subtitle && (
+            <p>{subtitle}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="chart">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+
+function TooltipBox({
+  active,
+  payload,
+  label,
+}: any) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  return (
+    <div className="tooltip">
+      <b>
+        {label
+          ? shortDate(label)
+          : ""}
+      </b>
+
+      {payload.map((item: any) => {
+        const isPercentage =
+          String(item.dataKey)
+            .toLowerCase()
+            .includes("pct") ||
+          String(item.name)
+            .includes("%");
+
+        return (
+          <span
+            key={item.dataKey}
+            style={{
+              color: item.color,
+            }}
+          >
+            {item.name}:{" "}
+            {isPercentage
+              ? `${fmt(item.value)}%`
+              : fmt(item.value)}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+
+export default function App() {
+  const [tab, setTab] =
+    useState("overview");
+
+  const [years, setYears] =
+    useState<string[]>([]);
+
+  const [fy, setFy] =
+    useState("");
+
+  const [overview, setOverview] =
+    useState<Overview | null>(null);
+
+  const [trends, setTrends] =
+    useState<Trends | null>(null);
+
+  const [error, setError] =
+    useState("");
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [fromDate, setFromDate] =
+    useState("");
+
+  const [toDate, setToDate] =
+    useState("");
+
+  const [theme, setTheme] =
+    useState<"light" | "dark">(() => {
+      const savedTheme =
+        window.localStorage.getItem(
+          "solar-dashboard-theme",
+        );
+
+      if (
+        savedTheme === "light" ||
+        savedTheme === "dark"
+      ) {
+        return savedTheme;
+      }
+
+      const prefersDarkMode =
+        window.matchMedia(
+          "(prefers-color-scheme: dark)",
+        ).matches;
+
+      return prefersDarkMode
+        ? "dark"
+        : "light";
+    });
+
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      "data-theme",
+      theme,
+    );
+
+    window.localStorage.setItem(
+      "solar-dashboard-theme",
+      theme,
+    );
+  }, [theme]);
+
+
+  const load = async (
+    value: string,
+  ) => {
+    const [
+      overviewData,
+      trendsData,
+    ] = await Promise.all([
+      api.get<Overview>(
+        `/api/overview?fy=${encodeURIComponent(
+          value,
+        )}`,
+      ),
+
+      api.get<Trends>(
+        `/api/trends?fy=${encodeURIComponent(
+          value,
+        )}`,
+      ),
+    ]);
+
+    setOverview(overviewData);
+    setTrends(trendsData);
+  };
+
+
+  useEffect(() => {
+    api
+      .get<{ items: string[] }>(
+        "/api/financial-years",
+      )
+      .then((response) => {
+        setYears(response.items);
+        setFy(response.items[0] || "");
+      })
+      .catch((reason) => {
+        setError(String(reason));
+      });
+  }, []);
+
+
+  useEffect(() => {
+    if (!fy) {
+      return;
+    }
+
+    setError("");
+
+    load(fy).catch((reason) => {
+      setError(String(reason));
+    });
+  }, [fy]);
+  
+
+
+  async function refresh() {
+    setRefreshing(true);
+    setError("");
+
+    try {
+      const job = await api.post<any>(
+        "/api/refresh",
+      );
+
+      const timer =
+        window.setInterval(
+          async () => {
+            const status =
+              await api.get<any>(
+                `/api/refresh/${job.id}`,
+              );
+
+            if (
+              status.status ===
+                "completed" ||
+              status.status ===
+                "failed"
+            ) {
+              clearInterval(timer);
+              setRefreshing(false);
+
+              if (
+                status.status ===
+                "failed"
+              ) {
+                setError(status.error);
+              } else {
+                await load(fy);
+              }
+            }
+          },
+          1500,
+        );
+    } catch (reason) {
+      setRefreshing(false);
+      setError(String(reason));
+    }
+  }
+
+
+  const trendDateBounds = useMemo(() => {
+    const periods = (trends?.production ?? [])
+      .map((row: any) => String(row.period ?? ""))
+      .filter(Boolean)
+      .sort();
+
+    return {
+      min: periods[0] ?? "",
+      max: periods[periods.length - 1] ?? "",
+    };
+  }, [trends]);
+
+
+  useEffect(() => {
+    setFromDate(trendDateBounds.min);
+    setToDate(trendDateBounds.max);
+  }, [fy, trendDateBounds.min, trendDateBounds.max]);
+
+
+  const inSelectedRange = (period: string) => {
+    if (!period) {
+      return false;
+    }
+
+    return (
+      (!fromDate || period >= fromDate) &&
+      (!toDate || period <= toDate)
+    );
+  };
+
+
+  const filteredProduction = useMemo(
+    () => (trends?.production ?? []).filter(
+      (row: any) => inSelectedRange(String(row.period ?? "")),
+    ),
+    [trends, fromDate, toDate],
+  );
+
+  const filteredRejection = useMemo(
+    () => (trends?.rejection ?? []).filter(
+      (row: any) => inSelectedRange(String(row.period ?? "")),
+    ),
+    [trends, fromDate, toDate],
+  );
+
+  const filteredYield = useMemo(
+    () => (trends?.yield ?? []).filter(
+      (row: any) => inSelectedRange(String(row.period ?? "")),
+    ),
+    [trends, fromDate, toDate],
+  );
+
+  const filteredWaferLoss = useMemo(
+    () => (trends?.wafer_loss ?? []).filter(
+      (row: any) => inSelectedRange(String(row.period ?? "")),
+    ),
+    [trends, fromDate, toDate],
+  );
+
+  const filteredMonthlyAverage = useMemo(() => {
+    const monthly = new Map<string, { total: number; count: number }>();
+
+    for (const row of filteredProduction) {
+      const month = String(row.period ?? "").slice(0, 7);
+      if (!month) continue;
+
+      const current = monthly.get(month) ?? { total: 0, count: 0 };
+      current.total += Number(row.total_mw) || 0;
+      current.count += 1;
+      monthly.set(month, current);
+    }
+
+    return Array.from(monthly.entries()).map(([month, value]) => ({
+      period: `${month}-01`,
+      avg_mw_per_day: value.count ? value.total / value.count : 0,
+    }));
+  }, [filteredProduction]);
+
+
+  const breakage = useMemo(() => {
+    const fields = [
+      "total_breakage",
+      "rw_breakage",
+      "bw_breakage",
+      "alw_breakage",
+      "agw_breakage",
+      "cell_breakage",
+    ];
+
+    const labels: Record<string, string> = {
+      total_breakage: "Total Breakage",
+      rw_breakage: "R-W Breakage",
+      bw_breakage: "B-W Breakage",
+      alw_breakage: "AL-W Breakage",
+      agw_breakage: "AG-W Breakage",
+      cell_breakage: "Cell Breakage",
+    };
+
+    const dailyRows = (trends?.breakage_daily ?? []).filter(
+      (row: any) => inSelectedRange(String(row.period ?? "")),
+    );
+
+    if (dailyRows.length) {
+      return fields.map((field) => ({
+        name: labels[field],
+        value: dailyRows.reduce(
+          (sum: number, row: any) => sum + (Number(row[field]) || 0),
+          0,
+        ),
+      }));
+    }
+
+    return fields.map((field) => ({
+      name: labels[field],
+      value: Number(trends?.breakage?.[field]) || 0,
+    }));
+  }, [trends, fromDate, toDate]);
+
+
+  return (
+    <div className="app">
+      <header className="dashboardHeader">
+        <img src="/company_logo.png" alt="Company logo" />
+
+        <div className="brand">
+          <h1>
+            SOLAR MANUFACTURING DASHBOARD
+          </h1>
+
+          <p>
+            Final Product - Production and
+            Quality Intelligence
+          </p>
+        </div>
+
+        <div className="controls">
+          <label>
+            Financial year
+
+            <select
+              value={fy}
+              onChange={(event) =>
+                setFy(event.target.value)
+              }
+            >
+              {years.map((year) => (
+                <option key={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {tab === "trends" && (
+            <>
+              <label>
+                From date
+                <input
+                  type="date"
+                  value={fromDate}
+                  min={trendDateBounds.min}
+                  max={toDate || trendDateBounds.max}
+                  onChange={(event) => setFromDate(event.target.value)}
+                  style={{
+                    display: "block",
+                    minWidth: 145,
+                    marginTop: 5,
+                    padding: "10px 11px",
+                    color: "#17271f",
+                    background: "#ffffff",
+                    border: "1px solid #c9d9cb",
+                    borderRadius: 10,
+                  }}
+                />
+              </label>
+
+              <label>
+                To date
+                <input
+                  type="date"
+                  value={toDate}
+                  min={fromDate || trendDateBounds.min}
+                  max={trendDateBounds.max}
+                  onChange={(event) => setToDate(event.target.value)}
+                  style={{
+                    display: "block",
+                    minWidth: 145,
+                    marginTop: 5,
+                    padding: "10px 11px",
+                    color: "#17271f",
+                    background: "#ffffff",
+                    border: "1px solid #c9d9cb",
+                    borderRadius: 10,
+                  }}
+                />
+              </label>
+            </>
+          )}
+
+          <div className="asof">
+            AS OF
+            <b>
+              {overview?.as_of || "-"}
+            </b>
+          </div>
+          <button
+            type="button"
+            className="themeToggle"
+            onClick={() => setTheme((currentTheme) => currentTheme === "light" ? "dark" : "light")}
+            aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          >
+            <span className="themeOption"><Sun /></span>
+            <span className={`themeThumb ${theme === "dark" ? "isDark" : ""}`} />
+            <span className="themeOption"><Moon /></span>
+          </button>
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+          >
+            <RefreshCw
+              className={
+                refreshing
+                  ? "spin"
+                  : ""
+              }
+            />
+
+            {refreshing
+              ? "Refreshing"
+              : "Refresh SAP Data"}
+          </button>
+        </div>
+      </header>
+
+
+      {error && (
+        <div className="error">
+          {error}
+        </div>
+      )}
+
+
+      <nav>
+        <button
+          className={
+            tab === "overview"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            setTab("overview")
+          }
+        >
+          <LayoutDashboard />
+          <span>Overview</span>
+        </button>
+
+        <button
+          className={
+            tab === "trends"
+              ? "active"
+              : ""
+          }
+          onClick={() =>
+            setTab("trends")
+          }
+        >
+          <BarChart3 />
+          <span>Trends</span>
+        </button>
+      </nav>
+
+
+      <main>
+        {tab === "overview" &&
+          overview && (
+            <>
+              <div className="kpiGrid">
+                {(overview.kpis ?? []).map(
+                  (kpi, index) => (
+                    <KpiCard
+                      key={kpi.title}
+                      k={kpi}
+                      index={index}
+                    />
+                  ),
+                )}
+              </div>
+
+
+              <div
+                className="floatingTableGrid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 20,
+                  alignItems: "stretch",
+                  marginTop: 20,
+                }}
+              >
+                <section
+                  className="panel floatingTableCard"
+                  style={{
+                    marginTop: 0,
+                    minWidth: 0,
+                    height: "100%",
+                    padding: 20,
+                    display: "flex",
+                    flexDirection: "column",
+                    borderRadius: 18,
+                    boxShadow: "0 12px 30px rgba(0, 74, 40, 0.10)",
+                  }}
+                >
+                  <h2
+                    style={{
+                      margin: "4px 0 18px",
+                      minHeight: 42,
+                      color: "#10291c",
+                      fontSize: "clamp(26px, 1.8vw, 34px)",
+                      fontWeight: 900,
+                      lineHeight: 1.15,
+                      textAlign: "left",
+                    }}
+                  >
+                    <BarChart3 className="sectionIcon" />
+                    Production Distribution
+                    <Info className="infoIcon" />
+                  </h2>
+                  <div className="tableWrap" style={{ flex: 1 }}>
+                    <table style={{ width: "100%", minWidth: 600, height: "100%", tableLayout: "fixed" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: "22%", fontSize: 13, padding: "14px 12px" }}>Grade / Type</th>
+                          <th style={{ width: "20%", fontSize: 13, padding: "14px 12px" }}>Cells</th>
+                          <th style={{ width: "18%", fontSize: 13, padding: "14px 12px" }}>On Date</th>
+                          <th style={{ width: "20%", fontSize: 13, padding: "14px 12px" }}>MTD</th>
+                          <th style={{ width: "20%", fontSize: 13, padding: "14px 12px" }}>YTD</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="group"><th colSpan={5} style={{ fontSize: 12, padding: "11px 12px" }}>Production</th></tr>
+                        {(overview.distribution ?? []).map((row) => (
+                          <tr key={row.label}>
+                            <th style={{ fontSize: 15, padding: "14px 12px" }}>{row.label}</th>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.cells, 0)}</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.on_date)}</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.mtd)}</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.ytd)}</td>
+                          </tr>
+                        ))}
+                        <tr className="group rejectionGroup"><th colSpan={5} style={{ fontSize: 12, padding: "11px 12px" }}>Rejection</th></tr>
+                        {(overview.rejection ?? []).map((row) => (
+                          <tr key={row.label}>
+                            <th style={{ fontSize: 15, padding: "14px 12px" }}>{row.label}</th>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.cells, 0)}</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.on_date, 0)}</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.mtd, 0)}</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.ytd, 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section
+                  className="panel floatingTableCard"
+                  style={{
+                    marginTop: 0,
+                    minWidth: 0,
+                    height: "100%",
+                    padding: 20,
+                    display: "flex",
+                    flexDirection: "column",
+                    borderRadius: 18,
+                    boxShadow: "0 12px 30px rgba(0, 74, 40, 0.10)",
+                  }}
+                >
+                  <h2
+                    style={{
+                      margin: "4px 0 18px",
+                      minHeight: 42,
+                      color: "#10291c",
+                      fontSize: "clamp(26px, 1.8vw, 34px)",
+                      fontWeight: 900,
+                      lineHeight: 1.15,
+                      textAlign: "left",
+                    }}
+                  >
+                    <Percent className="sectionIcon" />
+                    Yield % Distribution
+                    <Info className="infoIcon" />
+                  </h2>
+                  <div className="tableWrap" style={{ flex: 1 }}>
+                    <table style={{ width: "100%", minWidth: 500, height: "100%", tableLayout: "fixed" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: "34%", fontSize: 13, padding: "14px 12px" }}>Grade / Type</th>
+                          <th style={{ width: "22%", fontSize: 13, padding: "14px 12px" }}>On Date</th>
+                          <th style={{ width: "22%", fontSize: 13, padding: "14px 12px" }}>MTD</th>
+                          <th style={{ width: "22%", fontSize: 13, padding: "14px 12px" }}>YTD</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="group"><th colSpan={4} style={{ fontSize: 12, padding: "11px 12px" }}>Yield</th></tr>
+                        {(overview.yield_table ?? []).map((row) => (
+                          <tr key={row.label} className={row.label === "Good Cells" ? "total" : ""}>
+                            <th style={{ fontSize: 15, padding: "14px 12px" }}>{row.label}</th>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.on_date)}%</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.mtd)}%</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.ytd)}%</td>
+                          </tr>
+                        ))}
+                        <tr className="group rejectionGroup"><th colSpan={4} style={{ fontSize: 12, padding: "11px 12px" }}>Rejection</th></tr>
+                        {(overview.rejection_percentage_table ?? []).map((row) => (
+                          <tr key={row.label} className={row.label === "Wafer Loss" ? "lossTotal" : ""}>
+                            <th style={{ fontSize: 15, padding: "14px 12px" }}>{row.label}</th>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.on_date)}%</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.mtd)}%</td>
+                            <td style={{ fontSize: 14, fontWeight: 650, padding: "14px 12px" }}>{fmt(row.ytd)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+            </>
+          )}
+
+
+        {tab === "trends" &&
+          trends && (
+            <>
+              <Chart
+                title="Daywise Production Trend"
+                subtitle="Total saleable cells with Overall MW and A Grade MW"
+              >
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
+                  <ComposedChart
+                    data={
+                      filteredProduction
+                    }
+                    margin={{
+                      top: 25,
+                      right: 24,
+                      left: 10,
+                      bottom: 42,
+                    }}
+                  >
+                    <CartesianGrid
+                      stroke="#dfe7e1"
+                      vertical={false}
+                      strokeDasharray="4 4"
+                    />
+
+                    <XAxis
+                      {...axis}
+                      dataKey="period"
+                      tickFormatter={
+                        shortDate
+                      }
+                      interval="preserveStartEnd"
+                      minTickGap={40}
+                      angle={-35}
+                      textAnchor="end"
+                      height={70}
+                    />
+
+                    <YAxis
+                      {...axis}
+                      yAxisId="cells"
+                      tickFormatter={
+                        cellTick
+                      }
+                      label={{
+                        value:
+                          "Production (Cells)",
+                        angle: -90,
+                        position:
+                          "insideLeft",
+                        fill: "#26352d",
+                      }}
+                    />
+
+                    <YAxis
+                      {...axis}
+                      yAxisId="mw"
+                      orientation="right"
+                      domain={[
+                        "auto",
+                        "auto",
+                      ]}
+                      label={{
+                        value:
+                          "Production (MW)",
+                        angle: 90,
+                        position:
+                          "insideRight",
+                        fill: "#26352d",
+                      }}
+                    />
+
+                    <Tooltip
+                      content={
+                        <TooltipBox />
+                      }
+                    />
+
+                    <Legend
+                      verticalAlign="top"
+                      align="center"
+                      wrapperStyle={{
+                        paddingBottom: 14,
+                      }}
+                    />
+
+                    <Bar yAxisId="mw" dataKey="a_mw" fill="var(--chart-a-grade)" name="A Grade MW" radius={[5, 5, 0, 0]} isAnimationActive />
+                    <Line yAxisId="mw" type="monotone" dataKey="total_mw" stroke="var(--chart-overall)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} name="Overall MW" connectNulls isAnimationActive />
+                    <Line yAxisId="cells" type="monotone" dataKey="total_cells" stroke="var(--chart-saleable)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} name="Total Saleable Cells" connectNulls isAnimationActive />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </Chart>
+
+
+              <Chart
+                title="Daywise Rejection Trend"
+                subtitle="ER includes ER(Q); OR represents FOR"
+              >
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
+                  <LineChart
+                    data={
+                      filteredRejection
+                    }
+                    margin={{
+                      top: 25,
+                      right: 30,
+                      bottom: 48,
+                      left: 8,
+                    }}
+                  >
+                    <CartesianGrid
+                      stroke="#e5ebe6"
+                      vertical={false}
+                      strokeDasharray="4 4"
+                    />
+
+                    <XAxis
+                      {...axis}
+                      dataKey="period"
+                      tickFormatter={
+                        shortDate
+                      }
+                      interval="preserveStartEnd"
+                      minTickGap={45}
+                      angle={-35}
+                      textAnchor="end"
+                      height={72}
+                      label={{
+                        value:
+                          "Production Date",
+                        position:
+                          "insideBottom",
+                        offset: -17,
+                        fill: "#43544a",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    />
+
+                    <YAxis
+                      {...axis}
+                      tickFormatter={
+                        percentTick
+                      }
+                      domain={[
+                        0,
+                        (
+                          dataMax: number,
+                        ) =>
+                          Math.max(
+                            Math.ceil(
+                              dataMax *
+                                1.15,
+                            ),
+                            1,
+                          ),
+                      ]}
+                      width={65}
+                      label={{
+                        value:
+                          "Rejection (%)",
+                        angle: -90,
+                        position:
+                          "insideLeft",
+                        fill: "#43544a",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    />
+
+                    <Tooltip
+                      content={
+                        <TooltipBox />
+                      }
+                      cursor={{
+                        stroke: "#b6c5ba",
+                        strokeDasharray:
+                          "4 4",
+                      }}
+                    />
+
+                    <Legend
+                      verticalAlign="top"
+                      align="center"
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{
+                        paddingBottom: 15,
+                        color: "#26352d",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="breakage_pct"
+                      name="Breakage %"
+                      stroke="var(--chart-breakage)"
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={{
+                        r: 5,
+                        fill: "var(--chart-breakage)",
+                        stroke: "#ffffff",
+                        strokeWidth: 2,
+                      }}
+                      connectNulls
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="er_pct"
+                      name="ER %"
+                      stroke="var(--chart-er)"
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={{
+                        r: 5,
+                        fill: "var(--chart-er)",
+                        stroke: "#ffffff",
+                        strokeWidth: 2,
+                      }}
+                      connectNulls
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="or_pct"
+                      name="OR %"
+                      stroke="var(--chart-or)"
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={{
+                        r: 5,
+                        fill: "var(--chart-or)",
+                        stroke: "#ffffff",
+                        strokeWidth: 2,
+                      }}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Chart>
+
+
+              <Chart
+                title="Yield Trend (%)"
+                subtitle="Independent scales preserve visibility across all yield grades"
+              >
+                <div className="yieldSmallMultiples">
+                  <div className="yieldSubChart yieldSubChartPrimary">
+                    <div className="yieldScaleLabel">
+                      <span className="yieldDot yieldDotAGrade" />
+                      A Grade Yield
+                    </div>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={filteredYield}
+                        syncId="yield-trends"
+                        margin={{ top: 12, right: 24, bottom: 0, left: 8 }}
+                      >
+                        <CartesianGrid stroke="#e5ebe6" vertical={false}
+                      strokeDasharray="4 4" />
+                        <XAxis dataKey="period" hide />
+                        <YAxis
+                          {...axis}
+                          width={62}
+                          tickFormatter={percentTick}
+                          domain={[
+                            (dataMin: number) => Math.max(Math.floor(dataMin - 2), 0),
+                            (dataMax: number) => Math.min(Math.ceil(dataMax + 2), 100),
+                          ]}
+                        />
+                        <Tooltip
+                          content={<TooltipBox />}
+                          cursor={{ stroke: "#b6c5ba", strokeDasharray: "4 4" }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="a_yield_pct"
+                          name="A Grade %"
+                          stroke="var(--chart-a-grade)"
+                          strokeWidth={3}
+                          dot={false}
+                          activeDot={{ r: 5, fill: "var(--chart-a-grade)", stroke: "#ffffff", strokeWidth: 2 }}
+                          connectNulls
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="yieldSubChart yieldSubChartSecondary">
+                    <div className="yieldScaleLabel">
+                      <span className="yieldDot yieldDotBEL" />
+                      B-EL Yield
+                    </div>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={filteredYield}
+                        syncId="yield-trends"
+                        margin={{ top: 12, right: 24, bottom: 0, left: 8 }}
+                      >
+                        <CartesianGrid stroke="#e5ebe6" vertical={false}
+                      strokeDasharray="4 4" />
+                        <XAxis dataKey="period" hide />
+                        <YAxis
+                          {...axis}
+                          width={62}
+                          tickFormatter={percentTick}
+                          domain={[
+                            0,
+                            (dataMax: number) => Math.max(Math.ceil(dataMax * 1.1), 5),
+                          ]}
+                        />
+                        <Tooltip
+                          content={<TooltipBox />}
+                          cursor={{ stroke: "#b6c5ba", strokeDasharray: "4 4" }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="bel_yield_pct"
+                          name="B-EL %"
+                          stroke="var(--chart-er)"
+                          strokeWidth={2.7}
+                          dot={false}
+                          activeDot={{ r: 5, fill: "var(--chart-er)", stroke: "#ffffff", strokeWidth: 2 }}
+                          connectNulls
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="yieldSubChart yieldSubChartSmall">
+                    <div className="yieldScaleLabel">
+                      <span className="yieldDot yieldDotBGrade" />
+                      B Grade
+                      <span className="yieldDot yieldDotEB" />
+                      EB
+                    </div>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={filteredYield}
+                        syncId="yield-trends"
+                        margin={{ top: 12, right: 24, bottom: 46, left: 8 }}
+                      >
+                        <CartesianGrid stroke="#e5ebe6" vertical={false}
+                      strokeDasharray="4 4" />
+                        <XAxis
+                          {...axis}
+                          dataKey="period"
+                          tickFormatter={shortDate}
+                          interval="preserveStartEnd"
+                          minTickGap={45}
+                          angle={-35}
+                          textAnchor="end"
+                          height={64}
+                        />
+                        <YAxis
+                          {...axis}
+                          width={62}
+                          tickFormatter={percentTick}
+                          domain={[
+                            0,
+                            (dataMax: number) =>
+                              Math.max(Math.ceil(dataMax * 1.2 * 10) / 10, 0.5),
+                          ]}
+                          allowDecimals
+                        />
+                        <Tooltip
+                          content={<TooltipBox />}
+                          cursor={{ stroke: "#b6c5ba", strokeDasharray: "4 4" }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="b_yield_pct"
+                          name="B Grade %"
+                          stroke="var(--chart-or)"
+                          strokeWidth={2.5}
+                          dot={false}
+                          activeDot={{ r: 5, fill: "var(--chart-or)", stroke: "#ffffff", strokeWidth: 2 }}
+                          connectNulls
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="eb_yield_pct"
+                          name="EB %"
+                          stroke="var(--chart-eb)"
+                          strokeWidth={2.5}
+                          dot={false}
+                          activeDot={{ r: 5, fill: "var(--chart-eb)", stroke: "#ffffff", strokeWidth: 2 }}
+                          connectNulls
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </Chart>
+
+
+              <Chart
+                title="Wafer Loss Trend (%)"
+                subtitle="ER + OR + Breakage"
+              >
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
+                  <LineChart
+                    data={
+                      filteredWaferLoss
+                    }
+                    margin={{
+                      top: 28,
+                      right: 24,
+                      left: 8,
+                      bottom: 48,
+                    }}
+                  >
+                    <CartesianGrid
+                      stroke="#e3e9e4"
+                      vertical={false}
+                      strokeDasharray="4 4"
+                    />
+
+                    <XAxis
+                      {...axis}
+                      dataKey="period"
+                      tickFormatter={
+                        shortDate
+                      }
+                      interval="preserveStartEnd"
+                      minTickGap={45}
+                      angle={-35}
+                      textAnchor="end"
+                      height={72}
+                    />
+
+                    <YAxis
+                      {...axis}
+                      domain={[
+                        0,
+                        (
+                          dataMax: number,
+                        ) =>
+                          Math.max(
+                            Math.ceil(
+                              dataMax *
+                                1.15,
+                            ),
+                            1,
+                          ),
+                      ]}
+                      tickFormatter={
+                        percentTick
+                      }
+                    />
+
+                    <Tooltip
+                      content={
+                        <TooltipBox />
+                      }
+                    />
+
+                    <Legend />
+
+                    <Line
+                      type="monotone"
+                      dataKey="wafer_loss_pct"
+                      stroke="var(--chart-breakage)"
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{
+                        r: 5,
+                        fill: "var(--chart-breakage)",
+                        stroke: "#ffffff",
+                        strokeWidth: 2,
+                      }}
+                      name="Wafer Loss %"
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Chart>
+
+
+              <div className="bottomChartGrid">
+              <Chart title="Breakage Distribution">
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
+                  <BarChart
+                    data={breakage}
+                    margin={{
+                      top: 30,
+                      right: 20,
+                      left: 8,
+                      bottom: 50,
+                    }}
+                  >
+                    <CartesianGrid
+                      stroke="#e3e9e4"
+                      vertical={false}
+                      strokeDasharray="4 4"
+                    />
+
+                    <XAxis
+                      {...axis}
+                      dataKey="name"
+                      interval={0}
+                      angle={-25}
+                      textAnchor="end"
+                      height={68}
+                    />
+
+                    <YAxis
+                      {...axis}
+                      tickFormatter={
+                        cellTick
+                      }
+                    />
+
+                    <Tooltip
+                      content={
+                        <TooltipBox />
+                      }
+                    />
+
+                    <Bar
+                      dataKey="value"
+                      fill="#79c143"
+                      name="Breakage Cells"
+                      radius={[
+                        6,
+                        6,
+                        0,
+                        0,
+                      ]}
+                    >
+                      {breakage.map((entry, index) => {
+                        const breakageColors = [
+                          "#F5223B",
+                          "#F59E0B",
+                          "#D9A441",
+                          "#8B5CF6",
+                          "#C8D91E",
+                          "#12B76A",
+                        ];
+
+                        return (
+                          <Cell
+                            key={`breakage-${entry.name}`}
+                            fill={breakageColors[index % breakageColors.length]}
+                          />
+                        );
+                      })}
+
+                      <LabelList
+                        dataKey="value"
+                        position="top"
+                        formatter={(
+                          value: any,
+                        ) =>
+                          fmt(value, 0)
+                        }
+                        fill="#26352d"
+                        fontSize={10}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Chart>
+
+
+              <Chart title="Monthly Average MW Production per Day">
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
+                  <LineChart
+                    data={
+                      filteredMonthlyAverage
+                    }
+                    margin={{
+                      top: 28,
+                      right: 24,
+                      left: 8,
+                      bottom: 32,
+                    }}
+                  >
+                    <CartesianGrid
+                      stroke="#e3e9e4"
+                      vertical={false}
+                      strokeDasharray="4 4"
+                    />
+
+                    <XAxis
+                      {...axis}
+                      dataKey="period"
+                      tickFormatter={
+                        monthLabel
+                      }
+                    />
+
+                    <YAxis
+                      {...axis}
+                      domain={[
+                        "auto",
+                        "auto",
+                      ]}
+                      label={{
+                        value:
+                          "Average MW/day",
+                        angle: -90,
+                        position:
+                          "insideLeft",
+                        fill: "#26352d",
+                      }}
+                    />
+
+                    <Tooltip
+                      content={
+                        <TooltipBox />
+                      }
+                    />
+
+                    <Legend />
+
+                    <Line
+                      type="monotone"
+                      dataKey="avg_mw_per_day"
+                      stroke="var(--success)"
+                      strokeWidth={3}
+                      dot={{
+                        r: 5,
+                        fill: "var(--success)",
+                        stroke: "#087A50",
+                      }}
+                      activeDot={{
+                        r: 6,
+                        fill: "var(--success)",
+                        stroke: "#ffffff",
+                        strokeWidth: 2,
+                      }}
+                      name="Average MW/day"
+                    >
+                      <LabelList
+                        dataKey="avg_mw_per_day"
+                        position="top"
+                        formatter={(
+                          value: any,
+                        ) =>
+                          fmt(value, 2)
+                        }
+                        fill="var(--success)"
+                        fontSize={10}
+                      />
+                    </Line>
+                  </LineChart>
+                </ResponsiveContainer>
+              </Chart>
+              </div>
+            </>
+          )}
+      </main>
+      <footer className="dashboardFooter">
+        <div><Leaf /><span>Powering a Cleaner Tomorrow</span></div>
+        <div className="footerStatus"><span className="liveDot" />Live Data from SAP<i />Last Updated: {overview?.as_of || "-"}</div>
+      </footer>
+    </div>
+  );
+}
+
+Styles.css:
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root{
+  font-family:Inter,"Segoe UI",Arial,sans-serif;font-synthesis:none;color-scheme:light;
+  --bg:#F4F7F6;--surface:#FFFFFF;--surface-2:#FAFCFB;--text:#061B4D;--muted:#6B7280;--border:#DCE5E8;
+  --primary:#008A4E;--primary-dark:#006A3C;--success:#00A86B;--coral:#F28C82;--coral-bg:#FDE7E3;
+  --orange:#F7B267;--yellow:#FACC15;--blue:#1D72F3;--purple:#8B5CF6;
+  --shadow:0 8px 24px rgba(7,24,52,.08);--chart-a-grade:#00A86B;--chart-overall:#1D72F3;
+  --chart-saleable:#F59E0B;--chart-breakage:#F28C82;--chart-er:#F7B267;--chart-or:#3B82F6;--chart-eb:#8B5CF6;
+  --status-critical:#ef3340;--status-high-gap:#d97706;--status-moderate:#f59e0b;--status-near:#eab308;
+  --status-achieved:#00A86B;--status-exceeding:#00c878;
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;--bg:#05080A;--surface:#091219;--surface-2:#0D1821;--text:#F5F7FA;--muted:#A8B3BF;
+  --border:#173040;--primary:#00D084;--primary-dark:#00A86B;--success:#00E38C;--coral:#FF9A8B;
+  --coral-bg:#31181A;--orange:#FFC97A;--yellow:#FACC15;--blue:#2E86FF;--purple:#B388FF;
+  --shadow:0 0 30px rgba(0,208,132,.08);--chart-a-grade:#00D084;--chart-overall:#2E86FF;
+  --chart-saleable:#FFC65A;--chart-breakage:#FF9A8B;--chart-er:#FFC97A;--chart-or:#5EA8FF;--chart-eb:#B388FF;
+  --status-critical:#ff5b69;--status-high-gap:#ff8a3d;--status-moderate:#ffab4d;--status-near:#facc15;
+  --status-achieved:#00D084;--status-exceeding:#00E38C;
+}
+*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;min-width:320px;background:var(--bg);color:var(--text)}button,select,input{font:inherit}.app{min-height:100vh;background:var(--bg);color:var(--text);transition:background .25s ease,color .25s ease}
+.dashboardHeader{min-height:96px;padding:16px 24px;display:flex;align-items:center;gap:20px;background:var(--surface);border-bottom:1px solid var(--border);box-shadow:var(--shadow);position:relative;z-index:3}.dashboardHeader>img{width:132px;max-height:62px;object-fit:contain}.brand{min-width:330px;flex:1;padding-left:20px;border-left:1px solid var(--border)}.brand h1{margin:0;color:var(--text);font-size:clamp(24px,2vw,34px);font-weight:700;line-height:1.1}.brand p{margin:6px 0 0;color:#28568d;font-size:14px;font-weight:500}:root[data-theme="dark"] .brand p{color:var(--muted)}
+.controls{display:flex;align-items:flex-end;justify-content:flex-end;gap:12px;flex-wrap:wrap}.controls label{color:var(--text);font-size:12px;font-weight:500}.controls select,.controls input{display:block;height:44px;min-width:132px;margin-top:6px;padding:0 12px;color:var(--text)!important;background:var(--surface-2)!important;border:1px solid var(--border)!important;border-radius:9px!important;outline:none;box-shadow:none}.controls select:focus,.controls input:focus{border-color:var(--primary)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 15%,transparent)!important}.asof{height:64px;min-width:128px;padding:4px 12px 0;color:var(--text);font-size:12px;font-weight:500}.asof b{height:44px;margin-top:6px;padding:0 12px;display:flex;align-items:center;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;font-size:13px}
+.controls button{height:44px;padding:0 18px;display:flex;align-items:center;justify-content:center;gap:8px;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));border:0;border-radius:9px;box-shadow:0 8px 18px color-mix(in srgb,var(--primary) 24%,transparent);font-weight:600;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}.controls button:hover{transform:translateY(-2px);box-shadow:0 10px 24px color-mix(in srgb,var(--primary) 35%,transparent)}.controls button:disabled{opacity:.6;transform:none}.controls svg{width:18px;height:18px}.themeToggle{position:relative;width:82px;padding:4px!important;display:grid!important;grid-template-columns:1fr 1fr;overflow:hidden;color:var(--text)!important;background:var(--surface-2)!important;border:1px solid var(--border)!important;border-radius:999px!important;box-shadow:none!important}.themeOption{z-index:2;display:grid;place-items:center}.themeOption svg{width:18px}.themeThumb{position:absolute;top:3px;left:3px;width:36px;height:36px;background:#fff;border-radius:50%;box-shadow:0 3px 10px rgba(7,24,52,.18);transition:transform .25s ease,background .25s ease}.themeThumb.isDark{transform:translateX(39px);background:#082544}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+nav{margin:16px 24px 0;padding:4px;display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;box-shadow:0 4px 14px rgba(7,24,52,.04)}nav button{height:48px;display:flex;align-items:center;justify-content:center;gap:10px;color:#31558a;background:transparent;border:0;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;transition:all .22s ease}nav button svg{width:19px}nav button.active{color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));box-shadow:0 6px 15px color-mix(in srgb,var(--primary) 20%,transparent)}:root[data-theme="dark"] nav button{color:#b6c7d0}
+main{padding:20px 24px 26px}.error{margin:12px 24px;padding:12px 16px;color:#b4232f;background:var(--coral-bg);border:1px solid var(--coral);border-radius:10px;font-weight:600}
+.kpiGrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:20px}.kpi,.panel{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)}.kpi{min-width:0;min-height:260px;padding:18px 18px 14px;display:flex;flex-direction:column;position:relative;overflow:hidden;transition:transform .22s ease,box-shadow .22s ease}.kpi:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(7,24,52,.12)}:root[data-theme="dark"] .kpi:hover{box-shadow:0 0 34px rgba(0,208,132,.13)}.kpiHeader{display:grid;grid-template-columns:44px 1fr 20px;align-items:center;gap:10px}.kpiIcon{width:44px;height:44px;display:grid;place-items:center;border-radius:11px}.kpiIcon svg{width:25px;height:25px}.kpiIcon1{color:#008A4E;background:#DDF5E8}.kpiIcon2{color:#1D72F3;background:#DDEEFF}.kpiIcon3{color:#7C3AED;background:#EEE4FF}.kpiIcon4{color:#F97316;background:#FFF0DD}.kpiIcon5{color:#E11D48;background:#FFE4EB}.kpiTitle{display:flex;align-items:center;gap:7px;color:var(--text);font-size:12px;font-weight:700;text-transform:uppercase}.statusDot{width:7px;height:7px;flex:0 0 auto;border-radius:50%;box-shadow:0 0 8px currentColor}.kpiChevron{width:18px;color:#31558a}.compare{margin-top:16px;display:grid;grid-template-columns:1fr 1px 1fr;gap:12px;align-items:center}.compare>i{height:66px;background:var(--border)}.compare small,.compare em{display:block;color:#31558a;font-size:12px;font-style:normal;font-weight:500;text-transform:uppercase}:root[data-theme="dark"] .compare small,:root[data-theme="dark"] .compare em{color:var(--muted)}.compare strong{display:block;margin:4px 0 2px;color:var(--text);font-size:clamp(29px,2.35vw,48px);font-weight:700;line-height:1}.performanceTrack{height:8px;margin-top:13px;overflow:hidden;background:#d8e1e6;border-radius:999px}:root[data-theme="dark"] .performanceTrack{background:#29404c}.performanceTrack span{display:block;height:100%;border-radius:inherit;transition:width .8s cubic-bezier(.2,.8,.2,1)}.kpi footer{margin-top:10px;display:flex;justify-content:space-between;gap:8px;font-size:12px}.kpi footer b{font-weight:700}.kpi footer span{color:var(--text);font-weight:500;text-align:right}.kpiSparkline{width:100%;height:42px;margin-top:auto;overflow:visible}.sparkLine{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.panel{margin-top:20px;padding:22px}.floatingTableGrid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:20px!important;align-items:stretch!important;margin-top:20px!important}.floatingTableCard{margin-top:0!important;min-width:0;height:100%;padding:22px!important;display:flex!important;flex-direction:column!important;border-radius:18px!important;box-shadow:var(--shadow)!important}.floatingTableCard h2{min-height:34px!important;margin:0 0 14px!important;display:flex;align-items:center;gap:10px;color:var(--text)!important;font-size:24px!important;font-weight:700!important}.sectionIcon{width:27px;height:27px;color:var(--primary);stroke-width:2.5}.infoIcon{width:16px;height:16px;color:#31558a}.tableWrap{flex:1;overflow:auto;border:1px solid var(--border);border-radius:10px}table{width:100%;height:100%;min-width:600px;border-collapse:separate;border-spacing:0;table-layout:fixed}th,td{padding:10px 14px;color:var(--text);border-right:1px solid var(--border);border-bottom:1px solid var(--border);font-size:15px;text-align:right}tr>:last-child{border-right:0}tbody tr:last-child>*{border-bottom:0}th:first-child{text-align:left}thead th{color:#12392f;background:#e8f7ef;font-size:12px;font-weight:700;text-transform:uppercase}:root[data-theme="dark"] thead th{color:#d7ebe4;background:#0d2b25}.group th{padding:8px 14px;color:#fff!important;background:linear-gradient(90deg,var(--primary),var(--primary-dark))!important;border-color:transparent!important;font-size:12px;font-weight:700;text-transform:uppercase}.group.rejectionGroup th{color:#7d2d29!important;background:linear-gradient(90deg,#FDE7E3,#ffd7cc)!important;border-color:#f4b6aa!important}:root[data-theme="dark"] .group.rejectionGroup th{color:#ffd6cf!important;background:linear-gradient(90deg,#4a2922,#5c3328)!important;border-color:#744237!important}tbody tr:not(.group):nth-child(even) th,tbody tr:not(.group):nth-child(even) td{background:color-mix(in srgb,var(--surface-2) 72%,transparent)}.total th,.total td{color:#006A3C!important;background:#dff6e9!important;font-weight:700}:root[data-theme="dark"] .total th,:root[data-theme="dark"] .total td{color:#8ff1bd!important;background:#123427!important}.lossTotal th,.lossTotal td{color:#ca2934!important;background:var(--coral-bg)!important;font-weight:700}
+.chartPanel{overflow:hidden}.chartHeading{min-height:46px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.chartTitleGroup{display:flex;align-items:flex-start;gap:10px}.chartHeading h2{margin:0;color:var(--text);font-size:22px;font-weight:700}.chartHeading p{margin:4px 0 0;color:var(--muted);font-size:13px;font-weight:500}.expandButton{width:34px;height:34px;display:grid;place-items:center;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:8px;cursor:pointer}.expandButton:hover{color:var(--primary);border-color:var(--border);background:var(--surface-2)}.expandButton svg{width:17px}.chart{width:100%;height:430px}.tooltip{min-width:160px;padding:12px 14px;display:flex;flex-direction:column;gap:5px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);font-size:12px}.tooltip b{margin-bottom:3px}.tooltip span{font-weight:600}.recharts-legend-item-text{color:var(--text)!important;font-size:12px;font-weight:600}.recharts-cartesian-grid line{stroke:var(--border)}.recharts-cartesian-axis-tick-value{fill:var(--muted)}.recharts-cartesian-axis-line,.recharts-cartesian-axis-tick-line{stroke:var(--border)}
+.chart:has(.yieldSmallMultiples){height:auto;min-height:650px}.yieldSmallMultiples{width:100%;height:650px;display:grid;grid-template-rows:1fr .88fr .95fr;gap:12px}.yieldSubChart{position:relative;min-width:0;min-height:0;padding-top:31px;overflow:hidden;background:var(--surface-2);border:1px solid var(--border);border-radius:12px}.yieldScaleLabel{position:absolute;top:9px;left:16px;z-index:2;display:flex;align-items:center;gap:7px;color:var(--text);font-size:12px;font-weight:600}.yieldDot{width:9px;height:9px;display:inline-block;border-radius:50%}.yieldDotAGrade{background:var(--chart-a-grade)}.yieldDotBEL{background:var(--chart-er)}.yieldDotBGrade{background:var(--chart-or)}.yieldDotEB{margin-left:10px;background:var(--chart-eb)}.bottomChartGrid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.bottomChartGrid .panel{min-width:0}
+.dashboardFooter{min-height:58px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:20px;color:#21497c;background:var(--surface);border-top:1px solid var(--border);font-size:13px}.dashboardFooter>div{display:flex;align-items:center;gap:9px}.dashboardFooter svg{width:22px;height:22px;color:var(--primary)}.footerStatus{color:#31558a}.footerStatus i{width:1px;height:18px;margin:0 6px;background:var(--border)}.liveDot{width:10px;height:10px;background:var(--success);border-radius:50%;box-shadow:0 0 8px color-mix(in srgb,var(--success) 45%,transparent)}:root[data-theme="dark"] .dashboardFooter,:root[data-theme="dark"] .footerStatus{color:var(--muted)}
+@media(max-width:1450px){.dashboardHeader{flex-wrap:wrap}.brand{flex:1}.controls{width:100%}.kpiGrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1100px){.floatingTableGrid,.bottomChartGrid{grid-template-columns:1fr!important}.kpiGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:820px){.dashboardHeader>img{width:110px}.brand{min-width:calc(100% - 150px)}.brand h1{font-size:22px}.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}.controls label,.asof{width:100%}.controls select,.controls input{width:100%}.chart{height:360px}.dashboardFooter{align-items:flex-start;flex-direction:column;padding-block:16px}.floatingTableGrid{display:grid!important}.kpiGrid{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.dashboardHeader{padding:16px}.dashboardHeader>img{width:94px}.brand{padding-left:12px}.brand h1{font-size:18px}.brand p{font-size:12px}.controls{grid-template-columns:1fr}.asof{padding-left:0}nav{margin:12px 16px 0}main{padding:16px}.kpiGrid{grid-template-columns:1fr}.kpi{min-height:235px}.chart{height:330px}.yieldSmallMultiples{height:740px}.floatingTableCard{padding:16px!important}.floatingTableCard h2{font-size:20px!important}.dashboardFooter{padding-inline:16px}}
