@@ -1,0 +1,477 @@
+ReNew Dashboard – PERC Cell Line | Final UI/UX Polish
+
+Update my existing React + TypeScript dashboard without changing the backend logic. Preserve all calculations, APIs, Python scripts, SAP integration, and data flow. Only improve UI/UX and styling.
+
+The dashboard should look like an enterprise-grade manufacturing dashboard (Bloomberg + SAP Fiori + Siemens Opcenter style).
+
+---
+
+1. Header
+
+Replace the current title.
+
+Current:
+"SOLAR MANUFACTURING DASHBOARD"
+
+New:
+
+ReNew Dashboard – PERC Cell Line
+
+Subtitle:
+
+"Production & Quality Intelligence"
+
+Keep the ReNew logo unchanged.
+
+Add a subtle vertical divider between the logo and title.
+
+Increase whitespace around the header.
+
+---
+
+2. Overall Design
+
+- Softer shadows
+- Larger border radius (18–20px)
+- More white space
+- Cleaner typography
+- Consistent spacing
+- Better alignment
+
+Use Inter font.
+
+Colors:
+
+Primary Green:
+"#009C5A"
+
+Dark Green:
+"#007545"
+
+Background:
+"#F5F7F8"
+
+Card:
+"#FFFFFF"
+
+Dark mode:
+
+Background:
+"#050709"
+
+Cards:
+"#0B1216"
+
+Border:
+"rgba(0,255,180,.10)"
+
+---
+
+3. KPI Cards
+
+Keep all existing KPI cards.
+
+Improve them.
+
+Status bar
+
+The progress bar should automatically change color based on achievement.
+
+Example:
+
+Achievement| Color
+0–60%| "#EF4444"
+60–80%| "#F59E0B"
+80–95%| "#FACC15"
+95–105%| "#10B981"
+>105%| "#06D6A0"
+
+Animate width smoothly.
+
+Sparkline
+
+Each KPI sparkline should display the real trend of that KPI.
+
+Example:
+
+- YTD → YTD trend
+- Production Till Date → cumulative production trend
+- Run Rate → run-rate trend
+
+No fake waves.
+
+---
+
+4. Overview Tables
+
+Keep layout unchanged.
+
+Improve styling.
+
+Production Distribution
+
+Keep the split columns.
+
+Each period should contain:
+
+- Cells
+- MW
+
+Example:
+
+| On Date |
+| Cells |
+| MW |
+
+Same for MTD and YTD.
+
+Add:
+
+- Good Cells
+- Bad Cells
+
+Good Cells row:
+
+- soft green background
+
+Bad Cells row:
+
+- soft orange background
+
+Yield Table
+
+Keep exactly the same.
+
+Only improve:
+
+- hover
+- row spacing
+- subtle alternating rows
+
+Use:
+
+Good rows:
+"#EAF8F0"
+
+Rejection rows:
+"#FFF3EA"
+
+---
+
+5. Grade & Efficiency-wise SAP Distribution Table (Major Redesign)
+
+This table currently feels flat.
+
+Redesign it to match the quality of the other tables.
+
+Card
+
+- rounded 18px
+- soft shadow
+- better spacing
+
+Header
+
+Dark green gradient:
+
+"#008C50 → #00A86B"
+
+Column Groups
+
+Each grade section should have its own accent.
+
+Grade| Accent
+A Grade| Green
+B-EL| Amber
+B Grade| Blue
+EB| Purple
+
+Instead of only text headers, add a colored underline beneath each grade section.
+
+Rows
+
+Alternate:
+
+White
+
+Very light gray
+
+Hover:
+
+"#F4FBF7"
+
+Grand Total
+
+Green tinted row.
+
+Bold.
+
+---
+
+6. Trends Tab
+
+Keep current layout.
+
+The order remains:
+
+1. Daywise Production
+2. Daywise Rejection
+3. Yield Trend
+4. Wafer Loss
+5. Breakage + Monthly Average
+
+No layout changes.
+
+---
+
+7. Daywise Production Trend
+
+Keep:
+
+- Green bars
+- Blue Overall MW
+- Orange Saleable Cells
+
+Improve colors.
+
+Series| Color
+A Grade Bars| "#10B981"
+Overall MW| "#2563EB"
+Saleable Cells| "#F59E0B"
+Target Line| "#94A3B8" dashed
+
+Hover order:
+
+1. Overall MW
+2. A Grade MW
+3. Saleable Cells
+
+Smooth tooltip.
+
+---
+
+8. Daywise Rejection Trend
+
+The target lines currently compete visually.
+
+Reduce emphasis.
+
+Actual colors:
+
+Series| Color
+Breakage| "#E76F51"
+ER| "#F4A261"
+OR| "#3B82F6"
+
+Target lines:
+
+Target| Color
+Breakage Target| "rgba(231,111,81,.35)"
+ER Target| "rgba(244,162,97,.35)"
+OR Target| "rgba(59,130,246,.35)"
+
+Make them:
+
+- dashed
+- thinner
+- lower opacity
+
+Actual lines should always appear above target lines.
+
+---
+
+9. Yield Trend
+
+Keep three stacked charts.
+
+Improve colors.
+
+Series| Color
+A Grade| Emerald
+B-EL| Amber
+B Grade| Blue
+EB| Purple
+
+Each chart should have its own Y-axis.
+
+Same X-axis.
+
+Shared hover.
+
+---
+
+10. Wafer Loss
+
+Current red is too aggressive.
+
+Use:
+
+"#E76F51"
+
+Target line:
+
+"rgba(231,111,81,.35)"
+
+---
+
+11. Breakage Distribution
+
+Improve bars.
+
+Use rounded tops.
+
+Gradient fills.
+
+Bar| Color
+Total| Red
+B-EL| Amber
+B| Blue
+ER| Purple
+OR| Yellow
+Cell| Green
+
+Hover should slightly brighten.
+
+---
+
+12. Monthly Average
+
+Keep simple.
+
+Increase line thickness.
+
+Larger markers.
+
+Subtle glow.
+
+---
+
+13. Tabs
+
+Keep top tabs.
+
+Overview.
+
+Trends.
+
+Improve animation.
+
+Sliding pill.
+
+250ms transition.
+
+---
+
+14. Buttons
+
+Refresh button.
+
+Gradient:
+
+"#008C50 → #00A86B"
+
+Hover:
+
+lift 2px.
+
+Icon rotates.
+
+---
+
+15. Filters
+
+Keep current layout.
+
+Improve styling.
+
+Rounded.
+
+Cleaner borders.
+
+Hover.
+
+Better spacing.
+
+---
+
+16. Footer
+
+Current footer is fine.
+
+Improve spacing.
+
+Use smaller typography.
+
+Keep:
+
+Powering a Cleaner Tomorrow
+
+Live Data from SAP
+
+Last Updated
+
+---
+
+17. Microinteractions
+
+Add:
+
+- card hover lift
+- smooth transitions
+- button animations
+- table hover
+- KPI number animation
+- progress bar animation
+- sparkline fade-in
+- tab transition
+- chart fade-in
+
+Keep animations subtle.
+
+No flashy effects.
+
+---
+
+18. Dark Mode
+
+Dark mode should match the premium mockup.
+
+Background:
+
+"#050709"
+
+Cards:
+
+"#0B1216"
+
+Borders:
+
+"rgba(0,255,180,.10)"
+
+Text:
+
+Primary:
+"#F5F7F9"
+
+Secondary:
+"#94A3B8"
+
+Keep all chart colors identical to the light version, but increase brightness slightly for visibility.
+
+Never use pure black cards.
+
+Use a very subtle green glow only on active elements.
+
+---
+
+19. Technical Constraints
+
+- Do not modify backend logic.
+- Do not change APIs.
+- Do not change Python.
+- Preserve existing data bindings.
+- Preserve existing calculations.
+- Preserve responsiveness.
+- Keep all existing functionality.
+
+Only update the React components and CSS required to achieve this exact enterprise UI while keeping functionality unchanged.
