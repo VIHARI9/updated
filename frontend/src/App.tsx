@@ -28,6 +28,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -36,7 +37,6 @@ import {
 
 import { api } from "./api";
 
-
 type SparkPoint = { period: string; value: number };
 type KPI = { title: string; actual: number; plan: number | null; variance: number | null; achievement_pct: number | null; unit: string; sparkline?: SparkPoint[] };
 type ProductionRow = { label: string; on_date_cells: number; on_date_mw: number | null; period_cells: number; period_mw: number | null; ytd_cells: number; ytd_mw: number | null };
@@ -44,81 +44,63 @@ type PercentageRow = { label: string; on_date: number; period: number; ytd: numb
 type Overview = { as_of: string; period: { type: string; label: string; start: string; end: string }; kpis: KPI[]; distribution: ProductionRow[]; rejection: ProductionRow[]; yield_table: PercentageRow[]; rejection_percentage_table: PercentageRow[] };
 type Trends = { production: any[]; rejection: any[]; yield: any[]; wafer_loss: any[]; breakage: Record<string, number>; breakage_daily?: any[]; monthly_average: any[] };
 type EfficiencyGrade = { cells: number | null; mw: number | null; distribution_pct: number | null; cumulative_mw: number | null };
-type EfficiencyDistribution = { mode: string; label: string; start: string; end: string; rows: { efficiency: number; grades: Record<string, EfficiencyGrade> }[]; totals: { grade: string; cells: number | null; mw: number | null; distribution_pct: number | null }[] };
-const fmt = (
-  value: number | null | undefined,
-  decimals = 2,
-) =>
-  value == null
-    ? "N/A"
-    : Number(value).toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+type EfficiencyRow = { efficiency: number | string; grades: Record<string, EfficiencyGrade> };
+type EfficiencyDistribution = { mode: string; label: string; start: string; end: string; requested_date?: string; used_fallback?: boolean; rows: EfficiencyRow[]; totals: { grade: string; cells: number | null; mw: number | null; distribution_pct: number | null }[] };
 
-
+const fmt = (value: number | null | undefined, decimals = 2) =>
+  value == null ? "N/A" : Number(value).toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 const tableFmt = (value: number | null | undefined, decimals = 2) => value == null ? "" : fmt(value, decimals);
-const percentTick = (value: number) =>
-  `${Number(value).toFixed(2)}%`;
-
-
-const shortDate = (value: string) =>
-  new Date(`${value}T00:00:00`).toLocaleDateString(
-    "en-GB",
-    {
-      day: "2-digit",
-      month: "short",
-    },
-  );
-
-
-const monthLabel = (value: string) =>
-  new Date(`${value}T00:00:00`).toLocaleDateString(
-    "en-GB",
-    {
-      month: "short",
-      year: "2-digit",
-    },
-  );
-
-
-const cellTick = (value: number) => {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`;
-  }
-
-  if (value >= 1_000) {
-    return `${Math.round(value / 1_000)}k`;
-  }
-
-  return `${value}`;
+const percentTick = (value: number) => `${Number(value).toFixed(2)}%`;
+const shortDate = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+const efficiencyDate = (value: string) => {
+  const [year, month, day] = value.split("-");
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${day}${monthNames[Number(month) - 1]} ${year}`;
 };
-
-
-const axis = {
-  tick: {
-    fill: "#43544a",
-    fontSize: 11,
-    fontWeight: 600,
-  },
-  tickLine: false,
-  axisLine: {
-    stroke: "#aebbb3",
-  },
-};
-
-
+const monthLabel = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+const cellTick = (value: number) => value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : value >= 1_000 ? `${Math.round(value / 1_000)}k` : `${value}`;
+const axis = { tick: { fill: "#43544a", fontSize: 11, fontWeight: 600 }, tickLine: false, axisLine: { stroke: "#aebbb3" } };
 function KpiSparkline({ color, id, points = [] }: { color: string; id: string; points?: SparkPoint[] }) {
   const values = points.map((point) => Number(point.value)).filter(Number.isFinite);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
   const range = max - min || 1;
-  const coords = values.map((value, index) => `${values.length <= 1 ? 0 : (index / (values.length - 1)) * 260},${36 - ((value - min) / range) * 28}`);
-  return <svg className="kpiSparkline" viewBox="0 0 260 42" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity="0.24"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>{coords.length > 1 && <><polygon fill={`url(#${id})`} points={`0,42 ${coords.join(" ")} 260,42`}/><polyline className="sparkLine" stroke={color} points={coords.join(" ")}/></>}</svg>;
+  const coords = values.map((value, index) => ({
+    x: values.length <= 1 ? 0 : (index / (values.length - 1)) * 260,
+    y: 36 - ((value - min) / range) * 28,
+  }));
+  const smoothPath = (linePoints: typeof coords) => {
+    if (linePoints.length < 2) return "";
+
+    return linePoints.reduce((path, point, index) => {
+      if (index === 0) return `M ${point.x},${point.y}`;
+
+      const previous = linePoints[index - 1];
+      const beforePrevious = linePoints[index - 2] ?? previous;
+      const next = linePoints[index + 1] ?? point;
+      const control1 = {
+        x: previous.x + (point.x - beforePrevious.x) / 6,
+        y: previous.y + (point.y - beforePrevious.y) / 6,
+      };
+      const control2 = {
+        x: point.x - (next.x - previous.x) / 6,
+        y: point.y - (next.y - previous.y) / 6,
+      };
+
+      return `${path} C ${control1.x},${control1.y} ${control2.x},${control2.y} ${point.x},${point.y}`;
+    }, "");
+  };
+  const linePath = smoothPath(coords);
+  const areaPath = linePath ? `${linePath} L 260,42 L 0,42 Z` : "";
+
+  return <svg className="kpiSparkline" viewBox="0 0 260 42" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity="0.24"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>{linePath && <><path fill={`url(#${id})`} d={areaPath}/><path className="sparkLine" stroke={color} d={linePath}/></>}</svg>;
 }
 function KpiCard({ k, index }: { k: KPI; index: number }) {
   const targetLabel = k.title === "Run rate" ? "Required" : "Plan";
   const achievement = k.plan && k.plan > 0 ? (k.actual / k.plan) * 100 : (k.achievement_pct ?? 0);
   const cappedWidth = Math.min(Math.max(achievement, 0), 120) / 1.2;
   const gap = k.plan == null ? null : k.plan - k.actual;
-  const status = achievement < 50 ? "critical" : achievement < 75 ? "high-gap" : achievement < 90 ? "moderate" : achievement < 100 ? "near" : achievement <= 105 ? "achieved" : "exceeding";
+  const status = achievement < 60 ? "critical" : achievement < 80 ? "high-gap" : achievement < 95 ? "moderate" : achievement <= 105 ? "achieved" : "exceeding";
   const statusColor = `var(--status-${status})`;
   const iconMap = [CalendarDays, BarChart3, TrendingUp, Zap, Target];
   const FeatureIcon = iconMap[index] ?? BarChart3;
@@ -162,10 +144,12 @@ function KpiCard({ k, index }: { k: KPI; index: number }) {
 function Chart({
   title,
   subtitle,
+  action,
   children,
 }: {
   title: string;
   subtitle?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -178,6 +162,7 @@ function Chart({
             <p>{subtitle}</p>
           )}
         </div>
+        {action}
       </div>
 
       <div className="chart">
@@ -188,13 +173,13 @@ function Chart({
 }
 
 
-function TooltipBox({ active, payload, label }: any) {
+function TooltipBox({ active, payload, label, showEfficiencyTarget = false }: any) {
   if (!active || !payload?.length) return null;
   const raw = String(label ?? "");
   const heading = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? shortDate(raw) : raw;
   const order: Record<string, number> = { "Overall MW": 1, "A Grade MW": 2, "Total Saleable Cells": 3, "Target MW": 4 };
   const items = [...payload].sort((a: any, b: any) => (order[String(a.name)] ?? 99) - (order[String(b.name)] ?? 99));
-  return <div className="tooltip"><b>{heading}</b>{items.map((item: any) => <span key={`${item.dataKey}-${item.name}`} style={{color:item.color}}>{item.name}: {fmt(item.value,2)}{String(item.name).includes("%") ? "%" : ""}</span>)}</div>;
+  return <div className="tooltip"><b>{heading}</b>{items.map((item: any) => <span key={`${item.dataKey}-${item.name}`} style={{color:item.color}}>{item.name}: {fmt(item.value,2)}{String(item.name).includes("%") ? "%" : ""}</span>)}{showEfficiencyTarget && <span className="efficiencyTargetTooltip">Efficiency Target: 23.35%</span>}</div>;
 }
 export default function App() {
   const [tab, setTab] =
@@ -508,6 +493,33 @@ export default function App() {
   }, [trends, fromDate, toDate]);
 
 
+  const displayedEfficiencyRows = useMemo<EfficiencyRow[]>(() => {
+    const rows = efficiencyDistribution?.rows ?? [];
+    const groupedRows = rows.filter((row) => Number(row.efficiency) > 22.9);
+    const lowEfficiencyRows = rows.filter((row) => Number(row.efficiency) <= 22.9);
+
+    if (!lowEfficiencyRows.length) {
+      return rows;
+    }
+
+    const grades = ["A Grade", "B-EL", "B Grade", "EB"].reduce<Record<string, EfficiencyGrade>>((result, grade) => {
+      const gradeRows = lowEfficiencyRows.map((row) => row.grades[grade]).filter(Boolean);
+      const mw = gradeRows.reduce((sum, item) => sum + (item.mw ?? 0), 0);
+      const distribution = gradeRows.reduce((sum, item) => sum + (item.distribution_pct ?? 0), 0);
+      const lastCumulative = gradeRows[gradeRows.length - 1]?.cumulative_mw ?? null;
+      result[grade] = {
+        cells: null,
+        mw: mw || null,
+        distribution_pct: distribution || null,
+        cumulative_mw: grade === "A Grade" ? lastCumulative : null,
+      };
+      return result;
+    }, {});
+
+    return [...groupedRows, { efficiency: "<=22.9", grades }];
+  }, [efficiencyDistribution]);
+
+
   return (
     <div className="app">
       <header className="dashboardHeader">
@@ -515,12 +527,11 @@ export default function App() {
 
         <div className="brand">
           <h1>
-            SOLAR MANUFACTURING DASHBOARD
+            ReNew Dashboard &ndash; PERC Cell Line
           </h1>
 
           <p>
-            Final Product - Production and
-            Quality Intelligence
+            Production &amp; Quality Intelligence
           </p>
         </div>
 
@@ -787,15 +798,14 @@ export default function App() {
               </div>
               <section className="panel efficiencyTableCard">
                 <div className="efficiencyTableHeading">
-                  <div><h2><Percent className="sectionIcon" />Grade &amp; Efficiency-wise SAP Distribution</h2><p>{efficiencyDistribution ? `${shortDate(efficiencyDistribution.start)} to ${shortDate(efficiencyDistribution.end)}` : ""}</p></div>
+                  <div><h2><Percent className="sectionIcon" />Grade &amp; Efficiency-wise SAP Distribution</h2>{efficiencyDistribution && <p>{efficiencyDistribution.mode === "on_date" ? efficiencyDate(efficiencyDistribution.end) : `${shortDate(efficiencyDistribution.start)} to ${shortDate(efficiencyDistribution.end)}`}</p>}{efficiencyDistribution?.used_fallback && <small className="efficiencyDisclaimer">Data unavailable for on-date {efficiencyDate(efficiencyDistribution.requested_date ?? overview.as_of)}; showing latest available data.</small>}</div>
                   <label>Period<select value={efficiencyMode} onChange={(event) => setEfficiencyMode(event.target.value as typeof efficiencyMode)}><option value="on_date">On Date</option><option value="mtd">MTD</option><option value="ytd">YTD</option></select></label>
                 </div>
                 <div className="tableWrap efficiencyTableWrap">
                   <table className="efficiencyMatrix">
-                    <thead><tr><th rowSpan={2}>Efficiency %</th>{["A Grade", "B-EL", "B Grade", "EB"].map((grade) => <th key={grade} colSpan={grade === "A Grade" ? 3 : 2}>{grade}</th>)}</tr><tr><th>MW</th><th>Distrib. %</th><th>Cumulative MW</th>{["B-EL", "B Grade", "EB"].flatMap((grade) => [<th key={`${grade}-mw`}>MW</th>, <th key={`${grade}-dist`}>Distrib. %</th>])}</tr></thead>
+                    <thead><tr><th rowSpan={2}>Efficiency %</th>{["A Grade", "B-EL", "B Grade", "EB"].map((grade) => <th key={grade} className={`gradeHeader grade-${grade.toLowerCase().replace(/[^a-z]+/g, "-")}`} colSpan={grade === "A Grade" ? 3 : 2}>{grade}</th>)}</tr><tr><th>A Grade MW</th><th>A Grade Distrib. %</th><th>Cumulative MW</th>{["B-EL", "B Grade", "EB"].flatMap((grade) => [<th key={`${grade}-mw`}>MW</th>, <th key={`${grade}-dist`}>Distrib. %</th>])}</tr></thead>
                      <tbody>
-                       <tr className="group"><th colSpan={10}>SAP EFFICIENCY</th></tr>
-                       {(efficiencyDistribution?.rows ?? []).map((row, rowIndex) => <tr key={row.efficiency} className={rowIndex % 2 === 0 ? "effRow" : ""}><th>{fmt(row.efficiency, 1)}</th>{["A Grade", "B-EL", "B Grade", "EB"].flatMap((grade) => { const item = row.grades[grade]; const mw = item?.mw == null ? "" : fmt(item.mw, 2); const dist = item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`; const values = grade === "A Grade" ? [mw, dist, item?.cumulative_mw == null ? "" : fmt(item.cumulative_mw, 2)] : [mw, dist]; return values.map((value, index) => <td key={`${grade}-${index}`}>{value}</td>); })}</tr>)}
+                        {displayedEfficiencyRows.map((row, rowIndex) => <tr key={String(row.efficiency)} className={rowIndex % 2 === 0 ? "effRow" : ""}><th>{typeof row.efficiency === "number" ? fmt(row.efficiency, 1) : row.efficiency}</th>{["A Grade", "B-EL", "B Grade", "EB"].flatMap((grade) => { const item = row.grades[grade]; const mw = item?.mw == null ? "" : fmt(item.mw, 2); const dist = item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`; const values = grade === "A Grade" ? [mw, dist, item?.cumulative_mw == null ? "" : fmt(item.cumulative_mw, 2)] : [mw, dist]; return values.map((value, index) => <td key={`${grade}-${index}`}>{value}</td>); })}</tr>)}
                        {!!efficiencyDistribution?.totals.length && <tr className="total"><th>Grand Total</th>{["A Grade", "B-EL", "B Grade", "EB"].flatMap((grade) => { const item = efficiencyDistribution.totals.find((total) => total.grade === grade); const values = grade === "A Grade" ? [item?.mw == null ? "" : fmt(item.mw, 2), item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`, item?.mw == null ? "" : fmt(item.mw, 2)] : [item?.mw == null ? "" : fmt(item.mw, 2), item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`]; return values.map((value, index) => <td key={`${grade}-total-${index}`}>{value}</td>); })}</tr>}
                     </tbody>
                   </table>
@@ -892,7 +902,7 @@ export default function App() {
                       }}
                     />
 
-                    <Line yAxisId="mw" type="stepAfter" dataKey="production_target_mw" stroke="#7B8794" strokeWidth={2.5} strokeDasharray="7 5" dot={false} name="Target MW" connectNulls />
+                    <Line yAxisId="mw" type="stepAfter" dataKey="production_target_mw" stroke="#94A3B8" strokeWidth={1.5} strokeDasharray="6 5" dot={false} name="Target MW" connectNulls />
                     <Bar yAxisId="mw" dataKey="a_mw" fill="var(--chart-a-grade)" name="A Grade MW" radius={[5, 5, 0, 0]} isAnimationActive />
                     <Line yAxisId="mw" type="monotone" dataKey="total_mw" stroke="var(--chart-overall)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} name="Overall MW" connectNulls isAnimationActive />
                     <Line yAxisId="cells" type="monotone" dataKey="total_cells" stroke="var(--chart-saleable)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} name="Total Saleable Cells" connectNulls isAnimationActive />
@@ -1004,9 +1014,9 @@ export default function App() {
                       }}
                     />
 
-                    <Line type="stepAfter" dataKey="breakage_target_pct" name="Breakage Target %" stroke="var(--chart-breakage-target)" strokeWidth={2.5} strokeDasharray="7 5" dot={false} connectNulls />
-                    <Line type="stepAfter" dataKey="er_target_pct" name="ER Target %" stroke="var(--chart-er-target)" strokeWidth={2.5} strokeDasharray="7 5" dot={false} connectNulls />
-                    <Line type="stepAfter" dataKey="or_target_pct" name="OR Target %" stroke="var(--chart-or-target)" strokeWidth={2.5} strokeDasharray="7 5" dot={false} connectNulls />
+                    <Line type="stepAfter" dataKey="breakage_target_pct" name="Breakage Target %" stroke="var(--chart-breakage-target)" strokeWidth={2.25} strokeDasharray="5 5" dot={false} connectNulls />
+                    <Line type="stepAfter" dataKey="er_target_pct" name="ER Target %" stroke="var(--chart-er-target)" strokeWidth={2.25} strokeDasharray="6 5" dot={false} connectNulls />
+                    <Line type="stepAfter" dataKey="or_target_pct" name="OR Target %" stroke="var(--chart-or-target)" strokeWidth={2.25} strokeDasharray="5 5" dot={false} connectNulls />
                     <Line
                       type="monotone"
                       dataKey="breakage_pct"
@@ -1091,6 +1101,7 @@ export default function App() {
                           content={<TooltipBox />}
                           cursor={{ stroke: "#b6c5ba", strokeDasharray: "4 4" }}
                         />
+                        <Line type="stepAfter" dataKey="a_yield_target_pct" name="A Grade Target %" stroke="#047857" strokeWidth={2.25} strokeDasharray="6 5" dot={false} connectNulls />
                         <Line
                           type="monotone"
                           dataKey="a_yield_pct"
@@ -1132,14 +1143,15 @@ export default function App() {
                           content={<TooltipBox />}
                           cursor={{ stroke: "#b6c5ba", strokeDasharray: "4 4" }}
                         />
+                        <Line type="stepAfter" dataKey="bel_yield_target_pct" name="B-EL Target %" stroke="#B45309" strokeWidth={2.25} strokeDasharray="6 5" dot={false} connectNulls />
                         <Line
                           type="monotone"
                           dataKey="bel_yield_pct"
                           name="B-EL %"
-                          stroke="var(--chart-er)"
+                          stroke="var(--chart-saleable)"
                           strokeWidth={2.7}
                           dot={false}
-                          activeDot={{ r: 5, fill: "var(--chart-er)", stroke: "#ffffff", strokeWidth: 2 }}
+                          activeDot={{ r: 5, fill: "var(--chart-saleable)", stroke: "#ffffff", strokeWidth: 2 }}
                           connectNulls
                         />
                       </LineChart>
@@ -1186,6 +1198,7 @@ export default function App() {
                           content={<TooltipBox />}
                           cursor={{ stroke: "#b6c5ba", strokeDasharray: "4 4" }}
                         />
+                        <Line type="stepAfter" dataKey="b_yield_target_pct" name="B Grade Target %" stroke="#1D4ED8" strokeWidth={2.25} strokeDasharray="6 5" dot={false} connectNulls />
                         <Line
                           type="monotone"
                           dataKey="b_yield_pct"
@@ -1196,6 +1209,7 @@ export default function App() {
                           activeDot={{ r: 5, fill: "var(--chart-or)", stroke: "#ffffff", strokeWidth: 2 }}
                           connectNulls
                         />
+                        <Line type="stepAfter" dataKey="eb_yield_target_pct" name="EB Target %" stroke="#6D28D9" strokeWidth={2.25} strokeDasharray="6 5" dot={false} connectNulls />
                         <Line
                           type="monotone"
                           dataKey="eb_yield_pct"
@@ -1279,7 +1293,7 @@ export default function App() {
 
                     <Legend />
 
-                    <Line type="stepAfter" dataKey="wafer_loss_target_pct" name="Target %" stroke="#7B8794" strokeWidth={2.5} strokeDasharray="7 5" dot={false} connectNulls />
+                    <Line type="stepAfter" dataKey="wafer_loss_target_pct" name="Target %" stroke="var(--chart-breakage-target)" strokeWidth={2.25} strokeDasharray="5 5" dot={false} connectNulls />
                     <Line
                       type="monotone"
                       dataKey="wafer_loss_pct"
@@ -1300,9 +1314,8 @@ export default function App() {
               </Chart>
 
 
-              <div className="efficiencyTrendControls"><label>Efficiency view<select value={efficiencyTrendMode} onChange={(event) => setEfficiencyTrendMode(event.target.value as typeof efficiencyTrendMode)}><option value="on_date">On Date</option><option value="month">Selected Month</option><option value="mtd">MTD</option><option value="ytd">YTD</option></select></label>{efficiencyTrendMode === "month" && <label>Month<input type="month" value={efficiencyTrendMonth} onChange={(event) => setEfficiencyTrendMonth(event.target.value)} /></label>}</div>
-              <Chart title="Halm vs SAP Efficiency Trend" subtitle="Daily points for On Date, Month and MTD; monthly weighted points for YTD">
-                <ResponsiveContainer width="100%" height="100%"><LineChart data={efficiencyTrend} margin={{top:28,right:24,left:8,bottom:48}}><CartesianGrid stroke="#e3e9e4" vertical={false} strokeDasharray="4 4"/><XAxis {...axis} dataKey="period" tickFormatter={shortDate} interval="preserveStartEnd" minTickGap={45} angle={-35} textAnchor="end" height={72}/><YAxis {...axis} tickFormatter={percentTick} domain={["auto", "auto"]}/><Tooltip content={<TooltipBox />}/><Legend/><Line type="monotone" dataKey="halm_efficiency" name="Halm Efficiency %" stroke="var(--chart-a-grade)" strokeWidth={2.7} dot={false} activeDot={{r:5}} connectNulls isAnimationActive/><Line type="monotone" dataKey="sap_efficiency" name="SAP Efficiency %" stroke="var(--chart-overall)" strokeWidth={2.7} dot={false} activeDot={{r:5}} connectNulls isAnimationActive/></LineChart></ResponsiveContainer>
+              <Chart title="Halm vs SAP Efficiency Trend" subtitle="Daily points for On Date, Month and MTD; monthly weighted points for YTD" action={<div className="efficiencyTrendControls"><label>Efficiency view<select value={efficiencyTrendMode} onChange={(event) => setEfficiencyTrendMode(event.target.value as typeof efficiencyTrendMode)}><option value="on_date">On Date</option><option value="month">Selected Month</option><option value="mtd">MTD</option><option value="ytd">YTD</option></select></label>{efficiencyTrendMode === "month" && <label>Month<input type="month" value={efficiencyTrendMonth} onChange={(event) => setEfficiencyTrendMonth(event.target.value)} /></label>}</div>}>
+                <ResponsiveContainer width="100%" height="100%"><LineChart data={efficiencyTrend} margin={{top:28,right:24,left:8,bottom:48}}><CartesianGrid stroke="#e3e9e4" vertical={false} strokeDasharray="4 4"/><XAxis {...axis} dataKey="period" tickFormatter={shortDate} interval="preserveStartEnd" minTickGap={45} angle={-35} textAnchor="end" height={72}/><YAxis {...axis} tickFormatter={percentTick} domain={["auto", "auto"]}/><Tooltip content={<TooltipBox showEfficiencyTarget />}/><Legend/><ReferenceLine y={23.35} stroke="#64748B" strokeWidth={2.25} strokeDasharray="7 5" label={{value:"Efficiency Target", position:"insideTopRight", fill:"#64748B", fontSize:11, fontWeight:700}}/><Line type="monotone" dataKey="halm_efficiency" name="Halm Efficiency %" stroke="var(--chart-a-grade)" strokeWidth={2.7} dot={false} activeDot={{r:5}} connectNulls isAnimationActive/><Line type="monotone" dataKey="sap_efficiency" name="SAP Efficiency %" stroke="var(--chart-overall)" strokeWidth={2.7} dot={false} activeDot={{r:5}} connectNulls isAnimationActive/></LineChart></ResponsiveContainer>
               </Chart>
               <div className="bottomChartGrid">
               <Chart title="Breakage Distribution">
@@ -1359,14 +1372,7 @@ export default function App() {
                       ]}
                     >
                       {breakage.map((entry, index) => {
-                        const breakageColors = [
-                          "#F5223B",
-                          "#F59E0B",
-                          "#D9A441",
-                          "#8B5CF6",
-                          "#C8D91E",
-                          "#12B76A",
-                        ];
+                        const breakageColors = ["#E76F51", "#F59E0B", "#2563EB", "#8B5CF6", "#FACC15", "#10B981"];
 
                         return (
                           <Cell
@@ -1476,14 +1482,16 @@ export default function App() {
                     >
                       <LabelList
                         dataKey="avg_mw_per_day"
-                        position="top"
+                        position="bottom"
+                        dy={8}
                         formatter={(
                           value: any,
                         ) =>
                           fmt(value, 2)
                         }
-                        fill="var(--success)"
-                        fontSize={10}
+                        fill="var(--primary-dark)"
+                        fontSize={11}
+                        fontWeight={700}
                       />
                     </Line>
                   </LineChart>

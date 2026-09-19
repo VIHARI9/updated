@@ -361,8 +361,8 @@ def overview(
         else "Production to selected date"
     )
 
-    # Plan Achievement Current Month ignores the Overview filter. Actual is
-    # month-to-latest-date production, while Plan is the complete monthly target.
+    # Plan Achievement Current Month keeps its KPI comparison tied to the
+    # latest month, while its sparkline follows the selected range below.
     current_month_as_of = latest_data_date
     current_month_start = current_month_as_of.replace(day=1)
     current_month_data = fy_data[
@@ -371,12 +371,6 @@ def overview(
     ].sort_values("period")
     current_month_actual = float(current_month_data.total_mw.sum())
     current_month_full_plan = target_for(plan, current_month_as_of)
-    current_month_cumulative = current_month_data.total_mw.cumsum()
-    current_month_achievement_values = (
-        current_month_cumulative.div(current_month_full_plan).mul(100)
-        if current_month_full_plan not in (None, 0)
-        else None
-    )
 
     distribution = [
         production_row(label, cells_field, mw_field, on_date, selected, ytd)
@@ -469,7 +463,7 @@ def overview(
                 current_month_actual,
                 current_month_full_plan,
                 "MW",
-                spark_records(current_month_data, current_month_achievement_values) if current_month_achievement_values is not None else [],
+                spark_records(selected_sorted, selected_sorted.total_mw),
             ),
         ],
         "distribution": distribution,
@@ -524,29 +518,128 @@ def trends(fy: str) -> dict:
 
 def run_refresh_job(job_id: str) -> None:
     if not REFRESH_LOCK.acquire(blocking=False):
-        JOBS[job_id].update(status="failed", error="Another refresh is already running")
+        JOBS[job_id].update(
+            status="failed",
+            progress=100,
+            error="Another refresh is already running",
+        )
         return
+
     try:
-        JOBS[job_id].update(status="running", progress=10)
+        JOBS[job_id].update(
+            status="running",
+            progress=10,
+            message="Connecting to SAP GUI...",
+        )
+
         if sys.platform != "win32":
-            raise RuntimeError("SAP refresh requires Windows with SAP GUI")
+            raise RuntimeError(
+                "SAP refresh requires Windows with SAP GUI."
+            )
+
         if not settings.sap_script.exists():
-            raise RuntimeError(f"Missing SAP script: {settings.sap_script}")
+            raise RuntimeError(
+                f"Missing SAP VBS script: {settings.sap_script}"
+            )
+
+        JOBS[job_id].update(
+            status="running",
+            progress=20,
+            message="Exporting the four SAP reports...",
+        )
+
         result = subprocess.run(
-            ["cscript.exe", "//nologo", str(settings.sap_script), str(settings.data_dir)],
+            [
+                "cscript.exe",
+                "//nologo",
+                str(settings.sap_script),
+                str(settings.data_dir),
+            ],
             capture_output=True,
             text=True,
-            timeout=600,
+            encoding="utf-8",
+            errors="replace",
+            timeout=900,
         )
-        if result.returncode:
-            raise RuntimeError(result.stdout + result.stderr)
+
+        output = "\n".join(
+            part.strip()
+            for part in (
+                result.stdout or "",
+                result.stderr or "",
+            )
+            if part.strip()
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                output
+                or (
+                    "SAP refresh failed with exit code "
+                    f"{result.returncode}."
+                )
+            )
+
+        JOBS[job_id].update(
+            status="running",
+            progress=85,
+            message="Validating the exported workbooks...",
+        )
+
+        # Confirm that the dashboard can process the refreshed
+        # Daywise Data and Daywise MW Report workbooks.
         load_data()
-        JOBS[job_id].update(status="completed", progress=100, message=result.stdout.strip())
+
+        JOBS[job_id].update(
+            status="running",
+            progress=92,
+            message="Rebuilding the efficiency JSON...",
+        )
+
+        # The ZCELL script does not update Efficiency.xlsx.
+        # This regenerates JSON using the existing Efficiency.xlsx.
+        try:
+            from .efficiency_service import (
+                build_efficiency_json,
+            )
+
+            build_efficiency_json(force=True)
+
+        except Exception as efficiency_error:
+            raise RuntimeError(
+                "The four SAP reports were refreshed, but "
+                "sap_efficiency_daily.json could not be rebuilt: "
+                f"{efficiency_error}"
+            ) from efficiency_error
+
+        JOBS[job_id].update(
+            status="completed",
+            progress=100,
+            message=(
+                output
+                or "All four SAP reports were refreshed."
+            ),
+        )
+
+    except subprocess.TimeoutExpired:
+        JOBS[job_id].update(
+            status="failed",
+            progress=100,
+            error=(
+                "The SAP refresh exceeded the 15-minute timeout. "
+                "Check SAP GUI or Excel for an open dialog."
+            ),
+        )
+
     except Exception as exc:
-        JOBS[job_id].update(status="failed", progress=100, error=str(exc))
+        JOBS[job_id].update(
+            status="failed",
+            progress=100,
+            error=str(exc),
+        )
+
     finally:
         REFRESH_LOCK.release()
-
 
 def create_job() -> dict:
     job_id = str(uuid.uuid4())

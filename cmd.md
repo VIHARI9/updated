@@ -1,49 +1,27 @@
-'''
-gen json:
-$Project = "C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2"
->> 
->> Set-Location "$Project\backend"
->> 
->> .\.venv\Scripts\python.exe ".\build_efficiency_json.py"
+```
+# Navigate into your repository folder (replace with your actual folder path)
+cd path\to\your\React-Dashboard
 
-Created sap_efficiency_daily.json with 703 daily records
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2\backend> Test-Path "$Project\backend\data\sap_efficiency_daily.json"
+# Download and apply the latest changes
+git pull origin main
+```
+backend
+```
+cd C:\Users\vviha\Downloads\updated\backend
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+frontend
+```
+# Point the terminal to your local Node.js version
+$NodeFolder = "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\node-v24.20.0-win-x64"
+$env:Path = "$NodeFolder;$env:Path"
 
+# Navigate to the frontend folder
+cd C:\Users\vijaya.kalyani\Downloads\dashboard\updated\frontend
 
-                          run backend:
-                          $Project = "C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2"
->> 
->> Set-Location "$Project\backend"
->> 
->> .\.venv\Scripts\python.exe -m py_compile `
->>   ".\app\main.py" `
->>   ".\app\data_service.py" `
->>   ".\app\efficiency_service.py" `
->>   ".\build_efficiency_json.py"
->> 
->> .\.venv\Scripts\python.exe -m uvicorn `
->>   app.main:app `
->>   --host 127.0.0.1 `
->>   --port 8000
-
-
-run frontend:
-
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2> $Project = "C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2"
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2> $NodeFolder = "$Project\node-v24.20.0-win-x64"
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2> 
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2> $env:Path = "$NodeFolder;$env:Path"
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2> 
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2> Set-Location "$Project\frontend"
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2\frontend> 
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2\frontend> Remove-Item ".\node_modules\.vite" `
->>   -Recurse `
->>   -Force `
->>   -ErrorAction SilentlyContinue
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2\frontend> 
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2\frontend> Remove-Item ".\dist" `
->>   -Recurse `
->>   -Force `
->>   -ErrorAction SilentlyContinue
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2\frontend> 
-PS C:\Users\vijaya.kalyani\Downloads\renew-solar-dashboard-v2\frontend> npm.cmd run build
+# Install dependencies and start the app
+npm.cmd install
+npm.cmd run dev
+```

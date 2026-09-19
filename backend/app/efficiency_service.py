@@ -223,8 +223,16 @@ def efficiency_distribution(fy: str, as_of: str, mode: str = "on_date") -> dict:
     else:
         raise ValueError("Mode must be on_date, mtd, or ytd")
     if frame.empty:
-        return {"mode": selected_mode, "label": label, "start": _iso_date(start), "end": _iso_date(end), "rows": [], "totals": []}
+        return {"mode": selected_mode, "label": label, "start": _iso_date(start), "end": _iso_date(end), "requested_date": _iso_date(end), "used_fallback": False, "rows": [], "totals": []}
     frame["period"] = pd.to_datetime(frame["date"], errors="coerce")
+    requested_date = end
+    used_fallback = False
+    if selected_mode == "on_date":
+        available = frame[(frame.period >= fy_start) & (frame.period <= end)]
+        if not available.empty and not (frame.period == end).any():
+            end = available.period.max()
+            start = end
+            used_fallback = True
     data = frame[(frame.period >= start) & (frame.period <= end)].copy()
     denominator = pd.to_numeric(data["cells"], errors="coerce").sum(min_count=1)
     denominator = 0.0 if pd.isna(denominator) else float(denominator)
@@ -256,4 +264,4 @@ def efficiency_distribution(fy: str, as_of: str, mode: str = "on_date") -> dict:
         cells = _number(pd.to_numeric(subset.cells, errors="coerce").sum(min_count=1))
         mw = _number(pd.to_numeric(subset.mw, errors="coerce").sum(min_count=1))
         totals.append({"grade": grade, "cells": cells, "mw": mw, "distribution_pct": None if cells is None or denominator <= 0 else cells / denominator * 100})
-    return {"mode": selected_mode, "label": label, "start": _iso_date(start), "end": _iso_date(end), "rows": rows, "totals": totals}
+    return {"mode": selected_mode, "label": label, "start": _iso_date(start), "end": _iso_date(end), "requested_date": _iso_date(requested_date), "used_fallback": used_fallback, "rows": rows, "totals": totals}

@@ -1,0 +1,45 @@
+2026-09-18 11:08:28,613 | INFO | Refresh started
+2026-09-18 11:08:39,944 | INFO | Daywise Data.xlsx last period: 2026-07-24
+2026-09-18 11:08:45,851 | INFO | Daywise MW Report.xlsx last period: 2026-07-24
+2026-09-18 11:08:46,042 | INFO | Monthwise MW Report.xlsx last period: 2026-07-01
+2026-09-18 11:08:46,622 | INFO | Monthwise Report.xlsx last period: 2026-07-01
+2026-09-18 11:09:49,852 | ERROR | Refresh failed
+Traceback (most recent call last):
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 343, in run_refresh
+    export_report(session, data_dir, report, start, date.today())
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 218, in export_report
+    open_transaction(session, "zcellreport", start, end)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 177, in open_transaction
+    wait_for_object(session, "wnd[0]/usr/ctxtS_DATE-LOW", 60)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 138, in wait_for_object
+    raise TimeoutError(f"Timed out waiting for SAP object {object_id}: {last_error}")
+TimeoutError: Timed out waiting for SAP object wnd[0]/usr/ctxtS_DATE-LOW: (-2147352567, 'Exception occurred.', (619, 'SAP Frontend Server', 'The control could not be found by id.', 'C:\\Program Files (x86)\\SAP\\FrontEnd\\SAPgui\\sapfront.HLP', 393215, 0), None)
+2026-09-18 11:14:29,151 | INFO | Refresh started
+2026-09-18 11:14:45,259 | INFO | Daywise Data.xlsx last period: 2026-07-24
+2026-09-18 11:14:58,525 | INFO | Daywise MW Report.xlsx last period: 2026-07-24
+2026-09-18 11:14:58,883 | INFO | Monthwise MW Report.xlsx last period: 2026-07-01
+2026-09-18 11:15:00,065 | INFO | Monthwise Report.xlsx last period: 2026-07-01
+2026-09-18 11:15:32,260 | ERROR | Refresh failed
+Traceback (most recent call last):
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 211, in open_transaction
+    wait_for_object(session, "wnd[0]/usr/ctxtS_DATE-LOW", 30)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 138, in wait_for_object
+    raise TimeoutError(f"Timed out waiting for SAP object {object_id}: {last_error}")
+TimeoutError: Timed out waiting for SAP object wnd[0]/usr/ctxtS_DATE-LOW: (-2147352567, 'Exception occurred.', (619, 'SAP Frontend Server', 'The control could not be found by id.', 'C:\\Program Files (x86)\\SAP\\FrontEnd\\SAPgui\\sapfront.HLP', 393215, 0), None)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 388, in run_refresh
+    export_report(session, data_dir, report, start, date.today())
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 263, in export_report
+    open_transaction(session, "zcellreport", start, end)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\vijaya.kalyani\Downloads\dashboard\updated\backend\scripts\sap_incremental_refresh.py", line 221, in open_transaction
+    raise RuntimeError(details) from exc
+RuntimeError: ZCELLREPORT selection screen did not open. Current transaction: ZCELLREPORT. SAP status: no status message.
