@@ -506,12 +506,12 @@ export default function App() {
       const gradeRows = lowEfficiencyRows.map((row) => row.grades[grade]).filter(Boolean);
       const mw = gradeRows.reduce((sum, item) => sum + (item.mw ?? 0), 0);
       const distribution = gradeRows.reduce((sum, item) => sum + (item.distribution_pct ?? 0), 0);
-      const lastCumulative = gradeRows[gradeRows.length - 1]?.cumulative_mw ?? null;
+      const previousCumulative = Math.max(...groupedRows.map((row) => row.grades[grade]?.cumulative_mw ?? 0), 0);
       result[grade] = {
         cells: null,
         mw: mw || null,
         distribution_pct: distribution || null,
-        cumulative_mw: grade === "A Grade" ? lastCumulative : null,
+        cumulative_mw: grade === "A Grade" && (previousCumulative || mw) ? previousCumulative + mw : null,
       };
       return result;
     }, {});
@@ -806,7 +806,7 @@ export default function App() {
                     <thead><tr><th rowSpan={2}>Efficiency %</th>{["A Grade", "B-EL", "B Grade", "EB"].map((grade) => <th key={grade} className={`gradeHeader grade-${grade.toLowerCase().replace(/[^a-z]+/g, "-")}`} colSpan={grade === "A Grade" ? 3 : 2}>{grade}</th>)}</tr><tr><th>A Grade MW</th><th>A Grade Distrib. %</th><th>Cumulative MW</th>{["B-EL", "B Grade", "EB"].flatMap((grade) => [<th key={`${grade}-mw`}>MW</th>, <th key={`${grade}-dist`}>Distrib. %</th>])}</tr></thead>
                      <tbody>
                         {displayedEfficiencyRows.map((row, rowIndex) => <tr key={String(row.efficiency)} className={rowIndex % 2 === 0 ? "effRow" : ""}><th>{typeof row.efficiency === "number" ? fmt(row.efficiency, 1) : row.efficiency}</th>{["A Grade", "B-EL", "B Grade", "EB"].flatMap((grade) => { const item = row.grades[grade]; const mw = item?.mw == null ? "" : fmt(item.mw, 2); const dist = item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`; const values = grade === "A Grade" ? [mw, dist, item?.cumulative_mw == null ? "" : fmt(item.cumulative_mw, 2)] : [mw, dist]; return values.map((value, index) => <td key={`${grade}-${index}`}>{value}</td>); })}</tr>)}
-                       {!!efficiencyDistribution?.totals.length && <tr className="total"><th>Grand Total</th>{["A Grade", "B-EL", "B Grade", "EB"].flatMap((grade) => { const item = efficiencyDistribution.totals.find((total) => total.grade === grade); const values = grade === "A Grade" ? [item?.mw == null ? "" : fmt(item.mw, 2), item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`, item?.mw == null ? "" : fmt(item.mw, 2)] : [item?.mw == null ? "" : fmt(item.mw, 2), item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`]; return values.map((value, index) => <td key={`${grade}-total-${index}`}>{value}</td>); })}</tr>}
+                       {!!efficiencyDistribution?.totals.length && <tr className="total"><th>Grand Total</th>{["A Grade", "B-EL", "B Grade", "EB"].flatMap((grade) => { const item = efficiencyDistribution.totals.find((total) => total.grade === grade); const values = grade === "A Grade" ? [item?.mw == null ? "" : fmt(item.mw, 2), item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`, ""] : [item?.mw == null ? "" : fmt(item.mw, 2), item?.distribution_pct == null ? "" : `${fmt(item.distribution_pct, 2)}%`]; return values.map((value, index) => <td key={`${grade}-total-${index}`}>{value}</td>); })}</tr>}
                     </tbody>
                   </table>
                 </div>
