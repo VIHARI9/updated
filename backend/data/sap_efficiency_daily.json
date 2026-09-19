@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-18T05:23:40.673761+00:00",
+  "generated_at": "2026-09-19T05:48:50.691708+00:00",
   "source": "Efficiency.xlsx",
   "date_field": "Created on",
   "formula": "SUM(MW * Efficiency) / SUM(MW)",
